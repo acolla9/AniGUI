@@ -167,8 +167,14 @@ struct PlayersInfo {
 #[tauri::command]
 fn detect_players(app: tauri::AppHandle) -> Result<PlayersInfo, String> {
     let settings = persist::load_settings(&data_dir(&app)?);
-    let find =
-        |choice: PlayerChoice| player::find_player(kind_of(choice), settings.custom_path(choice));
+    let resource_dir = app.path().resource_dir().ok();
+    let find = |choice: PlayerChoice| {
+        player::find_player_with_resources(
+            kind_of(choice),
+            settings.custom_path(choice),
+            resource_dir.as_deref(),
+        )
+    };
     let mpv = find(PlayerChoice::Mpv);
     let vlc = find(PlayerChoice::Vlc);
     let chosen = match settings.player {
@@ -251,8 +257,13 @@ async fn play_episode(
     let kind = kind_of(settings.player);
 
     // Check for the player first so a missing install fails fast, before any network work.
-    let found = player::find_player(kind, settings.custom_path(settings.player))
-        .ok_or_else(|| player::missing_message(kind))?;
+    let resource_dir = app.path().resource_dir().ok();
+    let found = player::find_player_with_resources(
+        kind,
+        settings.custom_path(settings.player),
+        resource_dir.as_deref(),
+    )
+    .ok_or_else(|| player::missing_message(kind))?;
 
     let engine = ani_engine::AniEngine::new().map_err(|e| e.to_string())?;
     let resolved = engine

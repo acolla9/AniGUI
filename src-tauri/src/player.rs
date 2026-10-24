@@ -219,6 +219,17 @@ fn candidate_paths(kind: PlayerKind) -> Vec<PathBuf> {
 /// `ANIGUI_PLAYER` / `ANI_CLI_PLAYER` environment variable (if it points at that
 /// kind of player), well-known install locations, then PATH.
 pub fn find_player(kind: PlayerKind, custom: Option<&str>) -> Option<Player> {
+    find_player_with_resources(kind, custom, None)
+}
+
+/// Find a player while also checking Tauri's bundled resource directory. Tauri's
+/// installer may place resources under its resource directory (often `_up_` on
+/// Windows), rather than beside the application executable.
+pub fn find_player_with_resources(
+    kind: PlayerKind,
+    custom: Option<&str>,
+    resource_dir: Option<&Path>,
+) -> Option<Player> {
     if let Some(value) = custom.map(str::trim).filter(|s| !s.is_empty()) {
         if let Some(path) = resolve_override(value) {
             return Some(Player { path, kind });
@@ -236,6 +247,24 @@ pub fn find_player(kind: PlayerKind, custom: Option<&str>) -> Option<Player> {
     }
     if let Some(path) = candidate_paths(kind).into_iter().find(|p| p.is_file()) {
         return Some(Player { path, kind });
+    }
+    if kind == PlayerKind::Mpv {
+        if let Some(resources) = resource_dir {
+            // Tauri resource mappings and NSIS versions have used different
+            // layouts; support the common layouts without depending on cwd.
+            for rel in [
+                "mpv.exe",
+                "mpv/mpv.exe",
+                "resources/mpv/mpv.exe",
+                "_up_/mpv/mpv.exe",
+                "_up_/resources/mpv/mpv.exe",
+            ] {
+                let path = resources.join(rel);
+                if path.is_file() {
+                    return Some(Player { path, kind });
+                }
+            }
+        }
     }
     find_on_path(kind.command_name()).map(|path| Player { path, kind })
 }

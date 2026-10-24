@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Lets the main window use Tauri's core APIs, including listening for events from the Rust backend.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

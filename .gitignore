@@ -1,0 +1,9 @@
+node_modules/
+dist/
+target/
+.DS_Store
+.env
+
+# mpv is downloaded at build time by scripts/fetch-mpv.mjs
+resources/mpv/*
+!resources/mpv/README.txt

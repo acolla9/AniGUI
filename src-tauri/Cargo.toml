@@ -1,6 +1,6 @@
 [package]
 name = "anicli-gui"
-version = "0.1.0"
+version = "0.1.2"
 description = "A Windows-friendly desktop GUI for ani-cli"
 authors = ["AniCLI GUI contributors"]
 edition = "2021"

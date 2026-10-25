@@ -276,6 +276,22 @@ pub fn missing_message(kind: PlayerKind) -> String {
     }
 }
 
+/// Where mpv's log for the last launch is written (used to explain failures).
+pub fn mpv_log_path() -> PathBuf {
+    std::env::temp_dir().join("anigui-mpv.log")
+}
+
+/// Last few lines of mpv's log, for showing why playback failed.
+pub fn mpv_log_tail(lines: usize) -> Option<String> {
+    let text = std::fs::read_to_string(mpv_log_path()).ok()?;
+    let all: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    if all.is_empty() {
+        return None;
+    }
+    let start = all.len().saturating_sub(lines);
+    Some(all[start..].join("\n"))
+}
+
 /// Start the player without blocking. The returned child should be waited on
 /// (see `lib.rs`) so it is reaped and its exit code can be reported.
 pub fn spawn(player: &Player, req: &PlayRequest) -> Result<Child> {
@@ -283,6 +299,11 @@ pub fn spawn(player: &Player, req: &PlayRequest) -> Result<Child> {
         bail!("No video URL to play");
     }
     let mut cmd = Command::new(&player.path);
+    if player.kind == PlayerKind::Mpv {
+        let log = mpv_log_path();
+        let _ = std::fs::remove_file(&log);
+        cmd.arg(format!("--log-file={}", log.display()));
+    }
     cmd.args(build_args(player.kind, req))
         .stdin(Stdio::null())
         .stdout(Stdio::null())

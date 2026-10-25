@@ -364,8 +364,15 @@ async fn play_episode(
             });
         }
         let message = if failed {
+            let detail = if kind == PlayerKind::Mpv {
+                player::mpv_log_tail(8)
+                    .map(|t| format!("\n\nmpv said:\n{t}"))
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
             format!(
-                "The player could not play episode {episode_number} (exit code {}). The stream may have expired or the provider may have changed; try again.",
+                "The player could not play episode {episode_number} (exit code {}). The stream may have expired or the provider may have changed; try again.{detail}",
                 code.map(|c| c.to_string()).unwrap_or_else(|| "?".into())
             )
         } else if completed {

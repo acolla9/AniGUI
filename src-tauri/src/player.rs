@@ -281,15 +281,34 @@ pub fn mpv_log_path() -> PathBuf {
     std::env::temp_dir().join("anigui-mpv.log")
 }
 
-/// Last few lines of mpv's log, for showing why playback failed.
+/// The most useful lines from mpv's log: errors, warnings and fatal messages.
+/// Falls back to the last lines when there are none.
 pub fn mpv_log_tail(lines: usize) -> Option<String> {
     let text = std::fs::read_to_string(mpv_log_path()).ok()?;
     let all: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
     if all.is_empty() {
         return None;
     }
-    let start = all.len().saturating_sub(lines);
-    Some(all[start..].join("\n"))
+    let important: Vec<&str> = all
+        .iter()
+        .copied()
+        .filter(|l| l.contains("][e]") || l.contains("][f]") || l.contains("][w]"))
+        .collect();
+    let pick = if important.is_empty() {
+        &all
+    } else {
+        &important
+    };
+    let start = pick.len().saturating_sub(lines);
+    Some(pick[start..].join("\n"))
+}
+
+/// A CA bundle shipped next to a bundled mpv (see scripts/fetch-mpv.mjs). Lets mpv
+/// verify HTTPS streams even where Windows' certificate store is incomplete
+/// (fresh installs, Windows Sandbox, locked-down machines).
+pub fn bundled_ca_file(player_path: &Path) -> Option<PathBuf> {
+    let ca = player_path.parent()?.join("cacert.pem");
+    ca.is_file().then_some(ca)
 }
 
 /// Start the player without blocking. The returned child should be waited on
@@ -303,6 +322,14 @@ pub fn spawn(player: &Player, req: &PlayRequest) -> Result<Child> {
         let log = mpv_log_path();
         let _ = std::fs::remove_file(&log);
         cmd.arg(format!("--log-file={}", log.display()));
+        // The streams are plain HLS URLs; skip the pointless yt-dlp lookup.
+        cmd.arg("--ytdl=no");
+        if let Some(ca) = bundled_ca_file(&player.path) {
+            cmd.arg(format!(
+                "--tls-ca-file={}",
+                ca.to_string_lossy().replace('\\', "/")
+            ));
+        }
     }
     cmd.args(build_args(player.kind, req))
         .stdin(Stdio::null())
@@ -452,6 +479,17 @@ mod tests {
         assert_eq!(p.path, fake);
         // A bad custom path falls through to auto-detection (which may or may not find one).
         let _ = find_player(PlayerKind::Mpv, Some("/definitely/not/here/mpv"));
+    }
+
+    #[test]
+    fn bundled_ca_file_is_found_next_to_mpv() {
+        let dir = std::env::temp_dir().join("anigui_ca_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mpv = dir.join("mpv.exe");
+        let _ = std::fs::remove_file(dir.join("cacert.pem"));
+        assert!(bundled_ca_file(&mpv).is_none());
+        std::fs::write(dir.join("cacert.pem"), "x").unwrap();
+        assert_eq!(bundled_ca_file(&mpv), Some(dir.join("cacert.pem")));
     }
 
     #[test]

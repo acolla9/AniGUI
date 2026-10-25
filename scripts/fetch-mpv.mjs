@@ -47,7 +47,23 @@ function fail(message) {
   process.exit(0);
 }
 
+// Mozilla's CA bundle (curated by curl). Shipped next to mpv.exe so HTTPS streams verify
+// even on Windows installs whose certificate store is incomplete (e.g. Windows Sandbox).
+const CA_URL = 'https://curl.se/ca/cacert.pem';
+async function ensureCaBundle() {
+  const target = join(dest, 'cacert.pem');
+  if (existsSync(target) && !args.has('--force')) return;
+  console.log('mpv: downloading the CA certificate bundle…');
+  const res = await fetch(CA_URL, { headers: { 'User-Agent': 'anigui-build' } });
+  if (!res.ok) throw new Error(`CA bundle download failed with ${res.status}.`);
+  const text = await res.text();
+  if (text.length < 100_000 || !text.includes('BEGIN CERTIFICATE')) throw new Error('the CA bundle download looks wrong.');
+  mkdirSync(dest, { recursive: true });
+  writeFileSync(target, text);
+}
+
 if (existsSync(join(dest, 'mpv.exe')) && !args.has('--force')) {
+  try { await ensureCaBundle(); } catch (error) { fail(error instanceof Error ? error.message : String(error)); }
   console.log('mpv: already in resources/mpv (use --force to update it)');
   process.exit(0);
 }
@@ -84,6 +100,7 @@ try {
     if (!SKIP.has(name.toLowerCase())) cpSync(join(out, name), join(dest, name), { recursive: true });
   }
   writeFileSync(join(dest, 'VERSION.txt'), `${asset.name}\nfrom ${asset.url}\nsource: https://github.com/${REPO}\n`);
+  await ensureCaBundle();
   console.log(`mpv: ready in resources/mpv (${asset.tag})`);
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));

@@ -5,6 +5,68 @@ mod store;
 
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicU32, Ordering};
+static ACTIVE_PLAYER_PID: AtomicU32 = AtomicU32::new(0);
+static PANIC_VK_CODE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x7B); // VK_F12 = 0x7B
+
+fn parse_vk_code(key: &str) -> u32 {
+    let k = key.trim().to_uppercase();
+    match k.as_str() {
+        "F1" => 0x70,
+        "F2" => 0x71,
+        "F3" => 0x72,
+        "F4" => 0x73,
+        "F5" => 0x74,
+        "F6" => 0x75,
+        "F7" => 0x76,
+        "F8" => 0x77,
+        "F9" => 0x78,
+        "F10" => 0x79,
+        "F11" => 0x7A,
+        "F12" => 0x7B,
+        "ESCAPE" | "ESC" => 0x1B,
+        "SPACE" => 0x20,
+        "INSERT" => 0x2D,
+        "DELETE" => 0x2E,
+        "HOME" => 0x24,
+        "END" => 0x23,
+        "PAGEUP" => 0x21,
+        "PAGEDOWN" => 0x22,
+        "PAUSE" => 0x13,
+        "SCROLLLOCK" => 0x91,
+        "PRINTSCREEN" => 0x2C,
+        s if s.len() == 1 => {
+            let ch = s.chars().next().unwrap();
+            if ch.is_ascii_digit() || ch.is_ascii_uppercase() {
+                ch as u32
+            } else {
+                0x7B
+            }
+        }
+        _ => 0x7B,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn start_global_panic_listener(app_handle: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+        let mut key_was_down = false;
+        loop {
+            let vk = PANIC_VK_CODE.load(Ordering::SeqCst) as i32;
+            let state = unsafe { GetAsyncKeyState(vk) };
+            let is_down = (state as u16 & 0x8000) != 0;
+
+            if is_down && !key_was_down {
+                trigger_panic(app_handle.clone());
+                break;
+            }
+            key_was_down = is_down;
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+    });
+}
+
 
 use player::PlayerKind;
 use serde::Serialize;
@@ -149,6 +211,7 @@ fn get_settings(app: tauri::AppHandle) -> Result<Settings, String> {
 fn save_settings(app: tauri::AppHandle, settings: Settings) -> Result<Settings, String> {
     let dir = data_dir(&app)?;
     let cleaned = settings.sanitized();
+    PANIC_VK_CODE.store(parse_vk_code(&cleaned.panic_key), Ordering::SeqCst);
     persist::save_settings(&dir, &cleaned).map_err(|e| format!("could not save settings: {e}"))?;
     Ok(cleaned)
 }
@@ -167,14 +230,8 @@ struct PlayersInfo {
 #[tauri::command]
 fn detect_players(app: tauri::AppHandle) -> Result<PlayersInfo, String> {
     let settings = persist::load_settings(&data_dir(&app)?);
-    let resource_dir = app.path().resource_dir().ok();
-    let find = |choice: PlayerChoice| {
-        player::find_player_with_resources(
-            kind_of(choice),
-            settings.custom_path(choice),
-            resource_dir.as_deref(),
-        )
-    };
+    let find =
+        |choice: PlayerChoice| player::find_player(kind_of(choice), settings.custom_path(choice));
     let mpv = find(PlayerChoice::Mpv);
     let vlc = find(PlayerChoice::Vlc);
     let chosen = match settings.player {
@@ -257,13 +314,8 @@ async fn play_episode(
     let kind = kind_of(settings.player);
 
     // Check for the player first so a missing install fails fast, before any network work.
-    let resource_dir = app.path().resource_dir().ok();
-    let found = player::find_player_with_resources(
-        kind,
-        settings.custom_path(settings.player),
-        resource_dir.as_deref(),
-    )
-    .ok_or_else(|| player::missing_message(kind))?;
+    let found = player::find_player(kind, settings.custom_path(settings.player))
+        .ok_or_else(|| player::missing_message(kind))?;
 
     let engine = ani_engine::AniEngine::new().map_err(|e| e.to_string())?;
     let resolved = engine
@@ -330,6 +382,7 @@ async fn play_episode(
         eof_marker: marker_arg.as_deref(),
     };
     let mut child = player::spawn(&found, &request).map_err(|e| format!("{e:#}"))?;
+    ACTIVE_PLAYER_PID.store(child.id(), Ordering::SeqCst);
 
     // Remember what is being watched (best effort).
     let _ = persist::update_history(&dir, |entries| {
@@ -355,6 +408,7 @@ async fn play_episode(
     let watch_marker = marker_arg.is_some();
     std::thread::spawn(move || {
         let code = child.wait().ok().and_then(|status| status.code());
+        ACTIVE_PLAYER_PID.store(0, Ordering::SeqCst);
         let failed = player::exit_code_is_failure(kind, code);
         let completed = !failed && watch_marker && marker.is_file();
         let _ = std::fs::remove_file(&marker);
@@ -364,15 +418,8 @@ async fn play_episode(
             });
         }
         let message = if failed {
-            let detail = if kind == PlayerKind::Mpv {
-                player::mpv_log_tail(8)
-                    .map(|t| format!("\n\nmpv said:\n{t}"))
-                    .unwrap_or_default()
-            } else {
-                String::new()
-            };
             format!(
-                "The player could not play episode {episode_number} (exit code {}). The stream may have expired or the provider may have changed; try again.{detail}",
+                "The player could not play episode {episode_number} (exit code {}). The stream may have expired or the provider may have changed; try again.",
                 code.map(|c| c.to_string()).unwrap_or_else(|| "?".into())
             )
         } else if completed {
@@ -414,10 +461,169 @@ async fn play_episode(
     })
 }
 
+
+#[derive(serde::Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct VersionItem {
+    version: String,
+    release_date: Option<String>,
+    notes: Option<String>,
+    download_url: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct UpdateManifest {
+    current_version: VersionItem,
+    all_previous_versions: Option<Vec<VersionItem>>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateCheckResult {
+    has_update: bool,
+    current_version: String,
+    latest_version: String,
+    release_date: Option<String>,
+    notes: Option<String>,
+    download_url: Option<String>,
+    all_previous_versions: Vec<VersionItem>,
+}
+
+#[tauri::command]
+async fn check_for_updates(app: tauri::AppHandle) -> Result<UpdateCheckResult, String> {
+    let dir = data_dir(&app)?;
+    let settings = persist::load_settings(&dir);
+    let url = if settings.update_url.trim().is_empty() {
+        "https://raw.githubusercontent.com/AidenColla/AniGUI/main/update-info.json"
+    } else {
+        settings.update_url.trim()
+    };
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .user_agent("AniGUI-Updater/1.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let res = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("Could not check for updates: {e}"))?;
+
+    if !res.status().is_success() {
+        return Err(format!("Update server returned HTTP status {}", res.status()));
+    }
+
+    let manifest: UpdateManifest = res
+        .json()
+        .await
+        .map_err(|e| format!("Invalid update-info.json format: {e}"))?;
+
+    let current = env!("CARGO_PKG_VERSION");
+    let current_semver = semver::Version::parse(current).unwrap_or_else(|_| semver::Version::new(0, 1, 0));
+    let latest_clean = manifest.current_version.version.trim().trim_start_matches('v');
+    let latest_semver = semver::Version::parse(latest_clean).unwrap_or_else(|_| semver::Version::new(0, 0, 0));
+
+    let has_update = latest_semver > current_semver;
+
+    Ok(UpdateCheckResult {
+        has_update,
+        current_version: current.to_string(),
+        latest_version: manifest.current_version.version,
+        release_date: manifest.current_version.release_date,
+        notes: manifest.current_version.notes,
+        download_url: manifest.current_version.download_url,
+        all_previous_versions: manifest.all_previous_versions.unwrap_or_default(),
+    })
+}
+
+#[tauri::command]
+async fn install_update(download_url: String) -> Result<String, String> {
+    let url = download_url.trim();
+    if url.is_empty() {
+        return Err("No download URL provided.".to_string());
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .user_agent("AniGUI-Updater/1.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to download update installer: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!("Download failed with status: {}", response.status()));
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read update stream: {e}"))?;
+
+    let temp_dir = std::env::temp_dir();
+    let installer_path = temp_dir.join("AniGUI_Update_Installer.exe");
+
+    std::fs::write(&installer_path, &bytes)
+        .map_err(|e| format!("Could not save installer to temp folder: {e}"))?;
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new(&installer_path).arg("/S").spawn().map_err(|e| {
+            format!("Could not execute installer {}: {e}", installer_path.display())
+        })?;
+        std::process::exit(0);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        return Err("Auto-execution of setup is currently supported on Windows.".to_string());
+    }
+}
+
+#[tauri::command]
+fn trigger_panic(app: tauri::AppHandle) {
+    let pid = ACTIVE_PLAYER_PID.swap(0, Ordering::SeqCst);
+    if pid != 0 {
+        #[cfg(target_os = "windows")]
+        {
+            let _ = std::process::Command::new("taskkill")
+                .args(["/F", "/T", "/PID", &pid.to_string()])
+                .spawn();
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = std::process::Command::new("kill")
+                .args(["-9", &pid.to_string()])
+                .spawn();
+        }
+    }
+    app.exit(0);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|app| {
+            if let Ok(dir) = data_dir(&app.handle().clone()) {
+                let settings = persist::load_settings(&dir);
+                PANIC_VK_CODE.store(parse_vk_code(&settings.panic_key), Ordering::SeqCst);
+            }
+            #[cfg(target_os = "windows")]
+            {
+                start_global_panic_listener(app.handle().clone());
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
+            trigger_panic,
+            check_for_updates,
+            install_update,
             get_app_status,
             search_anime,
             load_episodes,

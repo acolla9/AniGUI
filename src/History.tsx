@@ -49,12 +49,16 @@ export function HistoryCard({ entry, busy, onContinue, onRemove }: Props) {
 export function ContinueCard({ entry, busy, onContinue }: Omit<Props, 'onRemove'>) {
   const { status, action } = describeEntry(entry);
   const when = formatWhen(entry.updatedAt);
-  return <button className="continue" disabled={busy} onClick={() => onContinue(entry)}>
-    <span className="continue-media">
-      <Poster src={entry.poster} title={entry.animeTitle} className="continue-poster" />
-      <span className="continue-play"><Play size={22} fill="currentColor" /></span>
-    </span>
-    <span className="continue-title">{action}</span>
-    <span className="continue-meta">{when ? `${status}, ${when.toLowerCase()}` : status}</span>
-  </button>;
+  return (
+    <button className="continue" disabled={busy} onClick={() => onContinue(entry)}>
+      <div className="continue-media">
+        <Poster src={entry.poster} className="continue-poster" />
+        <span className="continue-play"><Play size={20} fill="currentColor" /></span>
+      </div>
+      <div className="continue-text-block">
+        <span className="continue-title">{entry.animeTitle}</span>
+        <span className="continue-meta">{action} · {when ? when.toLowerCase() : status}</span>
+      </div>
+    </button>
+  );
 }

@@ -1,0 +1,18 @@
+{
+  "current_version": {
+    "version": "0.1.0",
+    "release_date": "2026-10-29",
+    "notes": "Initial release with modernized streaming UI, mpv/VLC integration, and global panic key.",
+    "download_url": "https://github.com/USERNAME/AniGUI/releases/latest/download/AniCLI_0.1.0_x64-setup.exe",
+    "installer_url": "https://github.com/USERNAME/AniGUI/releases/latest/download/AniCLI_0.1.0_x64-setup.exe"
+  },
+  "all_previous_versions": [
+    {
+      "version": "0.0.9",
+      "release_date": "2026-10-15",
+      "notes": "Alpha preview test build.",
+      "download_url": "https://github.com/USERNAME/AniGUI/releases/download/v0.0.9/AniCLI_0.0.9_x64-setup.exe"
+    }
+  ]
+}
+

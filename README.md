@@ -1,103 +1,61 @@
-# AniGUI
+# AniCLI GUI (Windows-first starter)
 
-A Windows desktop app for finding and watching anime, built on the ideas of [ani-cli](https://github.com/pystardust/ani-cli). Search a title, pick an episode, and it opens in mpv (bundled) or VLC. No terminal, Bash or WSL needed.
+A Tauri 2 + React + TypeScript desktop shell for a Windows-friendly GUI inspired by `ani-cli`.
 
-Built with [Tauri 2](https://tauri.app), React, TypeScript and Rust.
+## Current status
 
-> **Status: early testing releases (0.1.x).** It works, but it depends on third-party streaming providers that can change or block requests at any time. See [Troubleshooting](#troubleshooting).
+This is the first scaffold, not a finished anime streaming app yet.
 
-## Features
+- [x] Tauri 2 project and Windows NSIS installer configuration
+- [x] Dark desktop UI with navigation and search form
+- [x] Rust command bridge (`get_app_status`, `search_anime`)
+- [x] Connect native Rust anime search/source parsing (provider integration not live-tested)
+- [x] Episode selection and stream resolution
+- [x] Playback through an external player (mpv preferred, VLC fallback)
+- [ ] Bundle mpv with the installer
+- [ ] Installer prerequisite handling and release testing
 
-- Search for anime and browse its episode list
-- **Sub / Dub** switch per title, with a default you can set
-- Quality selection (best, 1080p, 720p, 480p, 360p, worst), falling back to the best available if your pick isn't offered
-- Plays through **mpv** (bundled with the installer) or **VLC**, with the right headers, separate audio track and subtitles handled for you
-- **Autoplay next episode** (mpv)
-- Watch history with "Recently watched" on the home page; stored on your computer only
-- Accent color themes
+The search command now calls the Rust engine and displays parsed results. The provider can change its markup or block requests, so live behavior must be tested from the desktop app.
 
-## Install
+## Development prerequisites
 
-1. Download the latest `AniGUI_x.y.z_x64-setup.exe` from the [Releases page](https://github.com/acolla9/AniGUI/releases/latest).
-2. Run it. It installs for the current user only, so no administrator rights are needed.
-3. Launch **AniGUI**.
-
-**Requirements:** Windows 10 or 11, 64-bit, and an internet connection. AniGUI uses Microsoft's WebView2 runtime, which is already part of current Windows; the installer fetches it if it's missing.
-
-Windows SmartScreen may warn about an unrecognized app, because the installer isn't code-signed. Choose **More info → Run anyway** if you trust the download.
-
-## Using it
-
-1. Open **Search**, type a title, and pick a result.
-2. Choose **Sub** or **Dub**, then click an episode.
-3. The episode opens in your player. When it ends, the next one starts automatically (mpv) or use the **Next** button.
-
-### Settings
-
-- **Player:** mpv (default) or VLC. You can point to your own copy with the optional location fields.
-- **Playback:** default Sub/Dub, default quality, autoplay next.
-- **Watch history:** remove entries or clear everything.
-
-Settings and history are stored as `settings.json` and `history.json` in `%APPDATA%\dev.anigui.gui`.
-
-## Troubleshooting
-
-**"The player could not play episode N (exit code 2)"**
-mpv couldn't open the stream. The message now ends with mpv's own error lines. Common causes:
-
-- *TLS / certificate errors:* fixed in 0.1.2 by bundling a CA certificate file. If you use your own mpv, update Windows or your mpv build.
-- *Expired stream or provider change:* try again, or try another quality or Sub/Dub.
-- *Network blocking:* a VPN, firewall or DNS issue can block the provider's video servers.
-
-mpv's full log for the last attempt is saved at `%TEMP%\anigui-mpv.log`. Include it if you open an issue.
-
-**"mpv wasn't found"**
-Reinstall AniGUI (mpv is bundled), or set the location in **Settings → Player**, or switch to VLC. You can also install it yourself with `winget install shinchiro.mpv`, `scoop install mpv` or `choco install mpvio.install`.
-
-**Search returns nothing**
-The streaming provider may be down, have changed its website, or be blocking requests. This is the most likely thing to break over time; please report it with the date and what you searched for.
-
-## Build from source
-
-Prerequisites: [Node.js](https://nodejs.org), [Rust](https://rustup.rs), and the [Tauri Windows prerequisites](https://v2.tauri.app/start/prerequisites/) (Microsoft C++ Build Tools and WebView2).
+For development only, install Node.js, Rust, and the Windows build prerequisites listed in the Tauri v2 Windows setup guide (including Microsoft C++ Build Tools and WebView2). The *end-user installer* can be designed to handle the app's runtime dependencies separately.
 
 ```powershell
-git clone https://github.com/acolla9/AniGUI.git
-cd AniGUI
 npm install
-npm run tauri dev       # run in development
-npm run tauri build     # build the installer
+npm run tauri dev
 ```
 
-The installer is written to `src-tauri\target\release\bundle\nsis\`.
+Build the frontend:
 
-mpv isn't stored in the repository. `npm run tauri build` runs `scripts/fetch-mpv.mjs --require`, which downloads the latest 64-bit Windows build from [shinchiro/mpv-winbuild-cmake](https://github.com/shinchiro/mpv-winbuild-cmake) and Mozilla's CA bundle (via [curl.se](https://curl.se/docs/caextract.html)) into `resources/mpv/`. Tauri bundles that folder and the app finds it next to the executable. The build fails if the download fails, so a release can't ship without them.
+```powershell
+npm run build
+```
 
-- `npm run fetch-mpv` re-downloads the newest mpv.
-- `npm run tauri dev` tries to fetch mpv too, but continues without it if you're offline.
-- Set `GITHUB_TOKEN` if GitHub rate-limits the download.
-- To use a different player, set `ANIGUI_PLAYER` to the path of the executable.
+Build the Windows NSIS installer (run on Windows with the Tauri toolchain installed):
 
-### Project layout
+```powershell
+npm run tauri build
+```
 
-| Path | What it is |
-| --- | --- |
-| `src/` | React + TypeScript user interface |
-| `src-tauri/src/ani_engine.rs` | Provider search, episode list and stream resolution (adapted from ani-cli) |
-| `src-tauri/src/player.rs` | Finds and launches mpv or VLC |
-| `src-tauri/src/persist.rs`, `store.rs` | Settings and watch history |
-| `scripts/fetch-mpv.mjs` | Downloads mpv and the CA bundle at build time |
+## Design/implementation notes
 
-## Legal
+- The original `ani-cli` project is a shell script, so it cannot be executed natively by Windows without a compatible shell/runtime.
+- The intended direction is to port/adapt the source workflow behind Rust commands so the installed app does not require users to install Bash or WSL.
+- A bundled player such as mpv needs to be packaged and configured in a later milestone. Review its current redistribution terms before shipping it.
+- Review and comply with the original `ani-cli` license and any source/provider terms before distributing derivative code or integrations.
+- The app needs network access for search and streaming once the engine is integrated. Site changes may break scraper-based functionality.
 
-AniGUI is free software, licensed under the **GNU General Public License v3.0 or later**. See [LICENSE](LICENSE). It contains code adapted from ani-cli (GPL-3.0-or-later) and ships mpv (GPL), so the whole distribution is covered by the GPL.
 
-Third-party components and their licenses are listed in [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt). That file also explains how to obtain the source code of the bundled GPL components.
+## Search engine integration
 
-AniGUI doesn't host, store or distribute any video content. It is a client that accesses third-party websites, which can change or disappear without notice. You are responsible for making sure your use complies with the laws of your country and with the terms of those services.
+The native Rust module is in `src-tauri/src/ani_engine.rs`. Tauri exposes it as `search_anime`, and the React UI renders real result titles or the returned error. Episode selection and playback are not connected yet. The implementation uses scraper-based parsing against the current provider endpoints, so it may need maintenance if those endpoints change.
 
-## Credits
 
-- [ani-cli](https://github.com/pystardust/ani-cli) by pystardust and contributors, the original idea and workflow
-- [mpv](https://mpv.io) and [shinchiro's Windows builds](https://github.com/shinchiro/mpv-winbuild-cmake)
-- [Tauri](https://tauri.app), [React](https://react.dev), [Lucide](https://lucide.dev)
+## Playback
+
+Clicking an episode calls the `play_episode` Rust command, which resolves the stream (`AniEngine::resolve_episode`), picks the requested quality (falling back to best, like ani-cli), and launches the player from `src-tauri/src/player.rs` with the same flags ani-cli uses: `--referrer`, `--audio-file`, `--sub-file`, `--force-media-title` for mpv, and the VLC equivalents. A `playback-ended` event tells the UI when the player closes or fails.
+
+Player lookup order: `ANIGUI_PLAYER` (or `ANI_CLI_PLAYER`) environment variable → mpv next to the app (`mpv.exe`, `mpv/mpv.exe`, `resources/mpv/mpv.exe`) → common Windows install locations (Scoop, Chocolatey, Program Files) → `mpv` on PATH → VLC. For development, `scoop install mpv` or `winget install mpv` is enough.
+
+An external player is used on purpose: the streams require a `Referer` header and a separate audio track, which a webview `<video>` element cannot send or mux.

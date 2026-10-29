@@ -1,18 +1,18 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AniGUI",
-  "version": "0.1.3",
-  "identifier": "dev.anigui.gui",
+  "productName": "AniCLI",
+  "version": "0.1.0",
+  "identifier": "dev.anicli.gui",
   "build": {
-    "beforeDevCommand": "node scripts/fetch-mpv.mjs && npm run dev",
+    "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "node scripts/fetch-mpv.mjs --require && npm run build",
+    "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
   "app": {
     "windows": [
       {
-        "title": "AniGUI",
+        "title": "AniCLI",
         "width": 1280,
         "height": 820,
         "minWidth": 900,
@@ -21,29 +21,14 @@
         "resizable": true
       }
     ],
-    "security": {
-      "csp": null
-    }
+    "security": { "csp": null }
   },
   "bundle": {
     "active": true,
-    "targets": [
-      "nsis"
-    ],
+    "targets": ["nsis"],
     "shortDescription": "Anime browsing and playback desktop app",
     "longDescription": "A Windows desktop GUI for an ani-cli-inspired anime workflow.",
     "category": "Entertainment",
-    "windows": {
-      "nsis": {
-        "displayLanguageSelector": false,
-        "installMode": "currentUser"
-      }
-    },
-    "icon": [
-      "icons/icon.ico"
-    ],
-    "resources": [
-      "../resources/mpv/**/*"
-    ]
+    "windows": { "nsis": { "displayLanguageSelector": false, "installMode": "currentUser" } }
   }
 }

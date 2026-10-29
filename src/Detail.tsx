@@ -32,7 +32,7 @@ export function Detail(p: Props) {
       <Poster src={p.anime.poster} className="backdrop" />
       <button className="back" onClick={p.onBack}><ChevronLeft size={18} /> Back</button>
       <div className="detail-main">
-        <Poster src={p.anime.poster} title={p.anime.title} className="detail-poster" />
+        <Poster src={p.anime.poster} className="detail-poster" />
         <div className="detail-info">
           <h1>{p.anime.title}</h1>
           <p className="detail-meta">{p.loading ? 'Loading episodes…' : count ? `${count} ${count === 1 ? 'episode' : 'episodes'}` : ''}</p>

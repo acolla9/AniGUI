@@ -27,6 +27,8 @@ pub struct Settings {
     pub default_quality: String,
     /// Start the next episode automatically after one finishes (mpv only).
     pub auto_play_next: bool,
+    pub panic_key: String,
+    pub update_url: String,
 }
 
 impl Default for Settings {
@@ -38,6 +40,8 @@ impl Default for Settings {
             default_dub: false,
             default_quality: "best".to_string(),
             auto_play_next: true,
+            panic_key: "F12".to_string(),
+            update_url: "https://raw.githubusercontent.com/AidenColla/AniGUI/main/update-info.json".to_string(),
         }
     }
 }
@@ -58,6 +62,8 @@ impl Settings {
         self.mpv_path = self.mpv_path.trim().trim_matches('"').trim().to_string();
         self.vlc_path = self.vlc_path.trim().trim_matches('"').trim().to_string();
         let quality = self.default_quality.trim().to_ascii_lowercase();
+        if self.panic_key.trim().is_empty() { self.panic_key = "F12".to_string(); } else { self.panic_key = self.panic_key.trim().to_uppercase(); }
+        self.update_url = self.update_url.trim().to_string();
         self.default_quality = if is_valid_quality(&quality) {
             quality
         } else {
@@ -239,3 +245,5 @@ mod tests {
         assert_eq!(s.custom_path(PlayerChoice::Mpv), None);
     }
 }
+
+

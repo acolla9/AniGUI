@@ -12,8 +12,20 @@ export type Settings = {
   defaultDub: boolean;
   defaultQuality: string;
   autoPlayNext: boolean;
+  panicKey: string;
+  updateUrl: string;
 };
 export type PlayersInfo = { selected: PlayerChoice; mpv: string | null; vlc: string | null; selectedFound: boolean; message: string };
+
+export type UpdateCheckResult = {
+  hasUpdate: boolean;
+  currentVersion: string;
+  latestVersion: string;
+  releaseDate?: string;
+  notes?: string;
+  downloadUrl?: string;
+  allPreviousVersions: { version: string; releaseDate?: string; notes?: string; downloadUrl?: string }[];
+};
 
 export type HistoryEntry = {
   animeId: string;
@@ -38,6 +50,8 @@ export type NowPlaying = {
 
 export const QUALITIES = ['best', '1080p', '720p', '480p', '360p', 'worst'];
 
+export const DEFAULT_UPDATE_URL = 'https://raw.githubusercontent.com/AidenColla/AniGUI/main/update-info.json';
+
 export const DEFAULT_SETTINGS: Settings = {
   player: 'mpv',
   mpvPath: '',
@@ -45,4 +59,6 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultDub: false,
   defaultQuality: 'best',
   autoPlayNext: true,
+  panicKey: 'F12',
+  updateUrl: DEFAULT_UPDATE_URL,
 };

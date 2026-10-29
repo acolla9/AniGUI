@@ -43,18 +43,20 @@ dependencies = [
 
 [[package]]
 name = "anicli-gui"
-version = "0.1.3"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
  "regex",
  "reqwest 0.12.28",
  "scraper",
+ "semver",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "urlencoding",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

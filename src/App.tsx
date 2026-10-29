@@ -1,28 +1,52 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { House, Search, Clock3, Settings as SettingsIcon, Play, SkipBack, SkipForward, RotateCcw, TriangleAlert } from 'lucide-react';
+import { 
+  House, 
+  Search, 
+  Clock3, 
+  Settings as SettingsIcon, 
+  Play, 
+  SkipBack, 
+  SkipForward, 
+  RotateCcw, 
+  TriangleAlert,
+  Compass,
+  Bookmark,
+  Calendar,
+  Sparkles,
+  SlidersHorizontal,
+  Flame,
+  Info,
+  ArrowDownCircle,
+  Download
+} from 'lucide-react';
 import { SettingsPage } from './SettingsPage';
 import { ContinueCard, HistoryCard } from './History';
 import { Detail } from './Detail';
-import { applyTheme, loadTheme, type Theme } from './theme';
 import { Poster, PosterCard, SearchBox, Spinner } from './ui';
 import {
   AnimeResult, DEFAULT_SETTINGS, Episode, EpisodesResponse, HistoryEntry, NowPlaying, PlaybackEnded, PlaybackStarted,
-  PlayersInfo, SearchResponse, Settings, Status,
+  PlayersInfo, SearchResponse, Settings, Status, UpdateCheckResult,
 } from './types';
 
 type Page = 'home' | 'search' | 'history' | 'settings';
 
-const NAV: { page: Page; label: string; icon: typeof House }[] = [
+const PRIMARY_NAV: { page: Page; label: string; icon: typeof House }[] = [
   { page: 'home', label: 'Home', icon: House },
   { page: 'search', label: 'Search', icon: Search },
   { page: 'history', label: 'Watch history', icon: Clock3 },
 ];
 
+const GENRE_TAGS = [
+  'All', 'Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy', 
+  'Horror', 'Mystery', 'Romance', 'Sci-Fi', 'Slice of Life', 'Supernatural'
+];
+
 export default function App() {
   const [page, setPage] = useState<Page>('home');
   const [query, setQuery] = useState('');
+  const [selectedGenre, setSelectedGenre] = useState('All');
   const [searchedFor, setSearchedFor] = useState('');
   const [status, setStatus] = useState<Status | null>(null);
   const [searchMessage, setSearchMessage] = useState('');
@@ -35,6 +59,9 @@ export default function App() {
   const [episodesBusy, setEpisodesBusy] = useState(false);
 
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [availableUpdate, setAvailableUpdate] = useState<UpdateCheckResult | null>(null);
+  const [installingUpdate, setInstallingUpdate] = useState(false);
+  const [updateError, setUpdateError] = useState('');
   const [players, setPlayers] = useState<PlayersInfo | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [dub, setDub] = useState(false);
@@ -43,9 +70,6 @@ export default function App() {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
   const [playback, setPlayback] = useState<{ text: string; error: boolean } | null>(null);
-
-  const [theme, setTheme] = useState<Theme>(loadTheme);
-  function changeTheme(next: Theme) { setTheme(next); applyTheme(next); }
 
   const searchInput = useRef<HTMLInputElement>(null);
   // Only the most recent episode request may update the screen.
@@ -68,6 +92,15 @@ export default function App() {
     invoke<Settings>('get_settings').then(s => { setSettings(s); setDub(s.defaultDub); setQuality(s.defaultQuality); }).catch(() => undefined);
     refreshPlayers();
     refreshHistory();
+    // Check for updates automatically in the background
+    invoke<UpdateCheckResult>('check_for_updates')
+      .then(res => {
+        if (res.hasUpdate) {
+          setAvailableUpdate(res);
+        }
+      })
+      .catch(() => undefined);
+
 
     // Fired by the backend when the external player closes (or fails to play the stream).
     const unlisten = listen<PlaybackEnded>('playback-ended', ({ payload }) => {
@@ -94,9 +127,22 @@ export default function App() {
     return () => { unlisten.then(fn => fn?.()); };
   }, []);
 
-  // Ctrl+K (or Cmd+K) jumps to search.
+  // Global hotkeys: Panic key and Ctrl+K search jump.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      const targetPanic = (settings.panicKey || 'F12').toUpperCase();
+      const pressed = (e.key === ' ' ? 'SPACE' : e.key).toUpperCase();
+      
+      if (pressed === targetPanic) {
+        e.preventDefault();
+        // Invoke backend panic to terminate external player and exit app
+        invoke('trigger_panic').catch(() => {
+          // Fallback if running outside Tauri
+          window.close();
+        });
+        return;
+      }
+
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         go('search');
@@ -105,7 +151,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [settings.panicKey]);
 
   function go(next: Page) {
     setPage(next);
@@ -133,6 +179,19 @@ export default function App() {
     }
   }
   latest.current = { settings, nowPlaying, startPlayback };
+
+  
+  async function triggerAutoUpdate() {
+    if (!availableUpdate?.downloadUrl) return;
+    setInstallingUpdate(true);
+    setUpdateError('');
+    try {
+      await invoke('install_update', { downloadUrl: availableUpdate.downloadUrl });
+    } catch (err) {
+      setInstallingUpdate(false);
+      setUpdateError(typeof err === 'string' ? err : 'Update installation failed.');
+    }
+  }
 
   async function search(event: FormEvent) {
     event.preventDefault();
@@ -239,32 +298,151 @@ export default function App() {
   const home = <>
     <section className={`hero ${latestEntry ? '' : 'plain'}`}>
       {latestEntry && <Poster src={latestEntry.poster} className="hero-art" />}
-      <div className="hero-text">
-        {latestEntry
-          ? <><h1 className="hero-kicker">Continue watching</h1><p className="hero-title">{latestEntry.animeTitle}</p></>
-          : <><h1 className="hero-title">What do you want to watch?</h1><p className="hero-sub">Episodes you play show up here, so you can pick up later.</p>
-            <SearchBox value={query} onChange={setQuery} onSubmit={search} busy={busy} /></>}
+      <div className="hero-overlay"></div>
+      <div className="hero-content-wrap">
+        {latestEntry ? (
+          <div className="hero-featured">
+            <div className="hero-poster-mini">
+              <Poster src={latestEntry.poster} className="hero-mini-img" />
+            </div>
+            <div className="hero-details">
+              <div className="hero-badge-row">
+                <span className="hero-tag">Continue watching</span>
+                {latestEntry.completed && <span className="hero-tag pill">Next up</span>}
+              </div>
+              <h1 className="hero-title">{latestEntry.animeTitle}</h1>
+              <p className="hero-sub">
+                {latestEntry.completed
+                  ? `You completed episode ${latestEntry.episodeNumber}. Ready for the next one?`
+                  : `Resume right where you left off at episode ${latestEntry.episodeNumber}.`}
+              </p>
+              <div className="hero-actions">
+                <button
+                  className="btn-hero-primary"
+                  disabled={busyPlaying}
+                  onClick={() => continueFromHistory(latestEntry)}
+                >
+                  <Play size={16} fill="currentColor" /> Resume Episode {latestEntry.episodeNumber}
+                </button>
+                <button
+                  className="btn-hero-secondary"
+                  onClick={() => {
+                    void loadEpisodes({ id: latestEntry.animeId, title: latestEntry.animeTitle, poster: latestEntry.poster });
+                  }}
+                >
+                  <Info size={16} /> Details
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="hero-empty">
+            <h1 className="hero-title">Discover & Stream Anime</h1>
+            <p className="hero-sub">Stream your favorite anime smoothly in high quality with mpv or VLC.</p>
+            <div className="hero-search-wrap">
+              <SearchBox value={query} onChange={setQuery} onSubmit={search} busy={busy} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="hero-subnav">
+        <div className="subnav-capsules">
+          <button className="capsule active"><Sparkles size={13} /> Anime</button>
+          <button className="capsule" onClick={() => go('history')}><Clock3 size={13} /> History</button>
+          <button className="capsule" onClick={() => go('search')}><Search size={13} /> Search</button>
+          <button className="capsule" onClick={() => go('settings')}><SlidersHorizontal size={13} /> Settings</button>
+        </div>
       </div>
     </section>
-    {latestEntry && <div className="page home-body">
-      <ContinueCard entry={latestEntry} busy={busyPlaying} onContinue={continueFromHistory} />
-      {history.length > 1 && <>
-        <div className="section-head"><h2 className="section-title">Recently watched</h2>{history.length > 7 && <button className="link" onClick={() => go('history')}>View all</button>}</div>
-        <div className="grid">{history.slice(1, 7).map(entry => <HistoryCard key={entry.animeId} entry={entry} busy={busyPlaying} onContinue={continueFromHistory} onRemove={removeFromHistory} />)}</div>
-      </>}
-    </div>}
+
+    <div className="page home-body">
+      {/* Category / Genre Pills */}
+      <div className="genre-scroller">
+        {GENRE_TAGS.map(g => (
+          <button
+            key={g}
+            className={`genre-chip ${selectedGenre === g ? 'active' : ''}`}
+            onClick={() => {
+              setSelectedGenre(g);
+              if (g !== 'All') {
+                setQuery(g);
+                setPage('search');
+              }
+            }}
+          >
+            {g}
+          </button>
+        ))}
+      </div>
+
+      {latestEntry && (
+        <div className="home-section">
+          <div className="section-head">
+            <div className="section-title-wrap">
+              <Flame size={18} className="section-icon" />
+              <h2 className="section-title">Continue Watching</h2>
+            </div>
+          </div>
+          <div className="continue-row">
+            <ContinueCard entry={latestEntry} busy={busyPlaying} onContinue={continueFromHistory} />
+          </div>
+        </div>
+      )}
+
+      {history.length > 1 && (
+        <div className="home-section">
+          <div className="section-head">
+            <div className="section-title-wrap">
+              <Clock3 size={18} className="section-icon" />
+              <h2 className="section-title">Recently Watched</h2>
+            </div>
+            {history.length > 6 && (
+              <button className="link" onClick={() => go('history')}>
+                View all ({history.length})
+              </button>
+            )}
+          </div>
+          <div className="grid">
+            {history.slice(1, 7).map(entry => (
+              <HistoryCard
+                key={entry.animeId}
+                entry={entry}
+                busy={busyPlaying}
+                onContinue={continueFromHistory}
+                onRemove={removeFromHistory}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   </>;
 
-  const searchPage = <section className="page">
-    <h1 className="page-title">Search</h1>
-    <SearchBox value={query} onChange={setQuery} onSubmit={search} busy={busy} inputRef={searchInput} autoFocus />
+  const searchPage = <section className="page search-page">
+    <div className="search-page-header">
+      <h1 className="page-title">Search Titles</h1>
+      <p className="page-sub">Type any anime title to search the catalog.</p>
+      <div className="search-bar-container">
+        <SearchBox value={query} onChange={setQuery} onSubmit={search} busy={busy} inputRef={searchInput} autoFocus />
+      </div>
+    </div>
     {searchedFor && <p className={`page-sub ${searchFailed ? 'error' : ''}`} role="status">{searchMessage}</p>}
     {results.length > 0 && <div className="grid">{results.map(anime => <PosterCard key={anime.id} poster={anime.poster} title={anime.title} onClick={() => loadEpisodes(anime)} />)}</div>}
   </section>;
 
-  const historyPage = <section className="page">
-    <h1 className="page-title">Watch history</h1>
-    <p className="page-sub">{history.length ? 'Pick up where you left off.' : 'Nothing here yet. Episodes you play will appear here.'}</p>
+  const historyPage = <section className="page history-page">
+    <div className="section-head mb-4">
+      <div>
+        <h1 className="page-title">Watch History</h1>
+        <p className="page-sub">{history.length ? `${history.length} titles recorded in your local playback history.` : 'Nothing here yet. Episodes you play will appear here.'}</p>
+      </div>
+      {history.length > 0 && (
+        <button className="card-btn secondary" onClick={() => go('settings')}>
+          Manage History
+        </button>
+      )}
+    </div>
     <div className="grid">{history.map(entry => <HistoryCard key={entry.animeId} entry={entry} busy={busyPlaying} onContinue={continueFromHistory} onRemove={removeFromHistory} />)}</div>
   </section>;
 
@@ -274,29 +452,99 @@ export default function App() {
       playingId={playingId} resolvingId={resolvingId} busy={busyPlaying} playback={playback} primary={primary}
       onDub={setDub} onQuality={setQuality} onPlay={ep => startPlayback(selectedAnime, ep, episodes)} onBack={() => setSelectedAnime(null)} onOpenSettings={() => go('settings')} />;
   } else if (page === 'settings') {
-    content = <SettingsPage settings={settings} players={players} historyCount={history.length} onSave={saveSettings} onClearHistory={clearHistory} theme={theme} onTheme={changeTheme} />;
+    content = <SettingsPage settings={settings} players={players} historyCount={history.length} onSave={saveSettings} onClearHistory={clearHistory} />;
   } else if (page === 'history') content = historyPage;
   else if (page === 'search') content = searchPage;
   else content = home;
 
   return <div className="app">
     <nav className="rail" aria-label="Main">
-      <div className="logo" aria-hidden="true"><Play size={16} fill="currentColor" /></div>
-      <div className="rail-group">{NAV.map(({ page: p, label, icon: Icon }) =>
-        <button key={p} className={`rail-btn ${page === p ? 'active' : ''}`} title={p === 'search' ? 'Search (Ctrl+K)' : label} aria-label={label} aria-current={page === p ? 'page' : undefined} onClick={() => go(p)}><Icon size={20} /></button>)}
+      <div className="logo" aria-hidden="true">
+        <span className="logo-letter">S</span>
       </div>
-      <button className={`rail-btn ${page === 'settings' ? 'active' : ''}`} title="Settings" aria-label="Settings" aria-current={page === 'settings' ? 'page' : undefined} onClick={() => go('settings')}><SettingsIcon size={20} /></button>
+
+      <div className="rail-group">
+        {PRIMARY_NAV.map(({ page: p, label, icon: Icon }) => (
+          <button
+            key={p}
+            className={`rail-btn ${page === p ? 'active' : ''}`}
+            title={p === 'search' ? 'Search (Ctrl+K)' : label}
+            aria-label={label}
+            aria-current={page === p ? 'page' : undefined}
+            onClick={() => go(p)}
+          >
+            <Icon size={20} strokeWidth={1.75} />
+          </button>
+        ))}
+
+        <div className="rail-divider" />
+
+        <button
+          className="rail-btn"
+          title="Browse Calendar"
+          aria-label="Calendar"
+          onClick={() => {
+            setQuery('Summer 2026');
+            setPage('search');
+          }}
+        >
+          <Calendar size={20} strokeWidth={1.75} />
+        </button>
+        <button
+          className="rail-btn"
+          title="Explore Genres"
+          aria-label="Explore"
+          onClick={() => {
+            setPage('home');
+          }}
+        >
+          <Compass size={20} strokeWidth={1.75} />
+        </button>
+      </div>
+
+      <div className="rail-bottom">
+        <button
+          className={`rail-btn ${page === 'settings' ? 'active' : ''}`}
+          title="Settings"
+          aria-label="Settings"
+          aria-current={page === 'settings' ? 'page' : undefined}
+          onClick={() => go('settings')}
+        >
+          <SettingsIcon size={20} strokeWidth={1.75} />
+        </button>
+        <div className="rail-avatar" title="User Profile">
+          <div className="avatar-dot" />
+        </div>
+      </div>
     </nav>
 
     <div className="stage">
       <div className="chips">
+        {availableUpdate && (
+          <div className="update-chip-banner">
+            <span className="update-chip-text">
+              <ArrowDownCircle size={15} />
+              Update v{availableUpdate.latestVersion} available!
+            </span>
+            <button
+              className="chip-action-btn"
+              disabled={installingUpdate}
+              onClick={triggerAutoUpdate}
+            >
+              {installingUpdate ? <Spinner /> : <Download size={13} />}
+              {installingUpdate ? 'Updating…' : 'Update & Restart'}
+            </button>
+            <button className="chip-dismiss-btn" onClick={() => setAvailableUpdate(null)}>✕</button>
+          </div>
+        )}
+
         {status && !status.engineConnected && <span className="chip" title={status.message}>Preview mode</span>}
         {playerMissing && <button className="chip warn" onClick={() => go('settings')}><TriangleAlert size={14} /> Player not found</button>}
       </div>
       <main className={`main ${nowPlaying ? 'with-bar' : ''}`}>{content}</main>
 
       {nowPlaying && <div className="np" aria-live="polite">
-        <Poster src={nowPlaying.anime.poster} title={nowPlaying.anime.title} className="np-poster" />
+        <Poster src={nowPlaying.anime.poster} className="np-poster" />
         <div className="np-text"><strong title={nowPlaying.anime.title}>{nowPlaying.anime.title}</strong><span className={playback?.error ? 'error' : ''} title={npText}>{npText}</span></div>
         {nowPlaying.state === 'starting' && <Spinner />}
         <div className="np-actions">

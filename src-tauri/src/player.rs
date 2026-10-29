@@ -219,17 +219,6 @@ fn candidate_paths(kind: PlayerKind) -> Vec<PathBuf> {
 /// `ANIGUI_PLAYER` / `ANI_CLI_PLAYER` environment variable (if it points at that
 /// kind of player), well-known install locations, then PATH.
 pub fn find_player(kind: PlayerKind, custom: Option<&str>) -> Option<Player> {
-    find_player_with_resources(kind, custom, None)
-}
-
-/// Find a player while also checking Tauri's bundled resource directory. Tauri's
-/// installer may place resources under its resource directory (often `_up_` on
-/// Windows), rather than beside the application executable.
-pub fn find_player_with_resources(
-    kind: PlayerKind,
-    custom: Option<&str>,
-    resource_dir: Option<&Path>,
-) -> Option<Player> {
     if let Some(value) = custom.map(str::trim).filter(|s| !s.is_empty()) {
         if let Some(path) = resolve_override(value) {
             return Some(Player { path, kind });
@@ -248,24 +237,6 @@ pub fn find_player_with_resources(
     if let Some(path) = candidate_paths(kind).into_iter().find(|p| p.is_file()) {
         return Some(Player { path, kind });
     }
-    if kind == PlayerKind::Mpv {
-        if let Some(resources) = resource_dir {
-            // Tauri resource mappings and NSIS versions have used different
-            // layouts; support the common layouts without depending on cwd.
-            for rel in [
-                "mpv.exe",
-                "mpv/mpv.exe",
-                "resources/mpv/mpv.exe",
-                "_up_/mpv/mpv.exe",
-                "_up_/resources/mpv/mpv.exe",
-            ] {
-                let path = resources.join(rel);
-                if path.is_file() {
-                    return Some(Player { path, kind });
-                }
-            }
-        }
-    }
     find_on_path(kind.command_name()).map(|path| Player { path, kind })
 }
 
@@ -276,41 +247,6 @@ pub fn missing_message(kind: PlayerKind) -> String {
     }
 }
 
-/// Where mpv's log for the last launch is written (used to explain failures).
-pub fn mpv_log_path() -> PathBuf {
-    std::env::temp_dir().join("anigui-mpv.log")
-}
-
-/// The most useful lines from mpv's log: errors, warnings and fatal messages.
-/// Falls back to the last lines when there are none.
-pub fn mpv_log_tail(lines: usize) -> Option<String> {
-    let text = std::fs::read_to_string(mpv_log_path()).ok()?;
-    let all: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
-    if all.is_empty() {
-        return None;
-    }
-    let important: Vec<&str> = all
-        .iter()
-        .copied()
-        .filter(|l| l.contains("][e]") || l.contains("][f]") || l.contains("][w]"))
-        .collect();
-    let pick = if important.is_empty() {
-        &all
-    } else {
-        &important
-    };
-    let start = pick.len().saturating_sub(lines);
-    Some(pick[start..].join("\n"))
-}
-
-/// A CA bundle shipped next to a bundled mpv (see scripts/fetch-mpv.mjs). Lets mpv
-/// verify HTTPS streams even where Windows' certificate store is incomplete
-/// (fresh installs, Windows Sandbox, locked-down machines).
-pub fn bundled_ca_file(player_path: &Path) -> Option<PathBuf> {
-    let ca = player_path.parent()?.join("cacert.pem");
-    ca.is_file().then_some(ca)
-}
-
 /// Start the player without blocking. The returned child should be waited on
 /// (see `lib.rs`) so it is reaped and its exit code can be reported.
 pub fn spawn(player: &Player, req: &PlayRequest) -> Result<Child> {
@@ -318,19 +254,6 @@ pub fn spawn(player: &Player, req: &PlayRequest) -> Result<Child> {
         bail!("No video URL to play");
     }
     let mut cmd = Command::new(&player.path);
-    if player.kind == PlayerKind::Mpv {
-        let log = mpv_log_path();
-        let _ = std::fs::remove_file(&log);
-        cmd.arg(format!("--log-file={}", log.display()));
-        // The streams are plain HLS URLs; skip the pointless yt-dlp lookup.
-        cmd.arg("--ytdl=no");
-        if let Some(ca) = bundled_ca_file(&player.path) {
-            cmd.arg(format!(
-                "--tls-ca-file={}",
-                ca.to_string_lossy().replace('\\', "/")
-            ));
-        }
-    }
     cmd.args(build_args(player.kind, req))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -479,17 +402,6 @@ mod tests {
         assert_eq!(p.path, fake);
         // A bad custom path falls through to auto-detection (which may or may not find one).
         let _ = find_player(PlayerKind::Mpv, Some("/definitely/not/here/mpv"));
-    }
-
-    #[test]
-    fn bundled_ca_file_is_found_next_to_mpv() {
-        let dir = std::env::temp_dir().join("anigui_ca_test");
-        std::fs::create_dir_all(&dir).unwrap();
-        let mpv = dir.join("mpv.exe");
-        let _ = std::fs::remove_file(dir.join("cacert.pem"));
-        assert!(bundled_ca_file(&mpv).is_none());
-        std::fs::write(dir.join("cacert.pem"), "x").unwrap();
-        assert_eq!(bundled_ca_file(&mpv), Some(dir.join("cacert.pem")));
     }
 
     #[test]

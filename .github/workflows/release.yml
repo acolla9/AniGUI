@@ -67,41 +67,72 @@ jobs:
           REPO: ${{ github.repository }}
           FILE_NAME: ${{ env.INSTALLER_NAME }}
         run: |
+          $ErrorActionPreference = "Stop"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # The tag checkout is a detached HEAD. Switch to the latest main
+          # BEFORE reading the file so we never work from a stale/broken copy.
+          git fetch origin main
+          git checkout -B main origin/main
+          if ($LASTEXITCODE -ne 0) { throw "Failed to check out main." }
+
           $version = $env:TAG_NAME.TrimStart('v')
           $jsonPath = "update-info.json"
           $today = (Get-Date).ToString("yyyy-MM-dd")
           $downloadUrl = "https://github.com/$env:REPO/releases/download/$env:TAG_NAME/$env:FILE_NAME"
 
           if (Test-Path $jsonPath) {
-            $data = Get-Content $jsonPath -Raw | ConvertFrom-Json
+            try {
+              $data = Get-Content $jsonPath -Raw | ConvertFrom-Json
+            } catch {
+              Write-Host "--- First 20 lines of $jsonPath ---"
+              Get-Content $jsonPath | Select-Object -First 20
+              throw "update-info.json is not valid JSON: $_"
+            }
           } else {
             $data = [PSCustomObject]@{
-              current_version = $null
+              current_version       = $null
               all_previous_versions = @()
             }
           }
 
-          if ($data.current_version) {
-            $previousList = @($data.all_previous_versions)
-            $previousList = @($data.current_version) + $previousList
-            $data.all_previous_versions = $previousList
+          # Archive the old current version, unless this is a re-run of the same release
+          $previous = @($data.all_previous_versions)
+          if ($data.current_version -and $data.current_version.version -ne $version) {
+            $previous = @($data.current_version) + $previous
+          }
+          # Drop any stale entry for the version being released
+          $previous = @($previous | Where-Object { $_.version -ne $version })
+
+          $newData = [PSCustomObject]@{
+            current_version = [PSCustomObject]@{
+              version       = $version
+              release_date  = $today
+              notes         = "Release $env:TAG_NAME"
+              download_url  = $downloadUrl
+              installer_url = $downloadUrl
+            }
+            all_previous_versions = $previous
           }
 
-          $data.current_version = [PSCustomObject]@{
-            version = $version
-            release_date = $today
-            notes = "Release $env:TAG_NAME"
-            download_url = $downloadUrl
-            installer_url = $downloadUrl
-          }
+          $jsonString = $newData | ConvertTo-Json -Depth 10
+          # Validate before writing
+          $null = $jsonString | ConvertFrom-Json
+          [System.IO.File]::WriteAllText(
+            (Join-Path $PWD $jsonPath),
+            $jsonString + "`n",
+            (New-Object System.Text.UTF8Encoding $false)
+          )
 
-          $jsonString = $data | ConvertTo-Json -Depth 10
-          [System.IO.File]::WriteAllText($jsonPath, $jsonString)
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout main
-          git pull origin main
           git add $jsonPath
-          git commit -m "chore(release): auto-update update-info.json for $env:TAG_NAME [skip ci]"
-          git push origin main
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "chore(release): auto-update update-info.json for $env:TAG_NAME [skip ci]"
+            git pull --rebase origin main
+            git push origin main
+            if ($LASTEXITCODE -ne 0) { throw "Failed to push to main." }
+          } else {
+            Write-Host "No changes to commit."
+          }

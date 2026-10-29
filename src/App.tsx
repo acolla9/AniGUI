@@ -88,7 +88,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    invoke<Status>('get_app_status').then(setStatus).catch(() => setStatus({ appName: 'AniGUI', version: '0.1.0', engineConnected: false, platform: 'browser', message: 'Preview mode: run the app through Tauri to connect the Rust backend.' }));
+    invoke<Status>('get_app_status').then(setStatus).catch(() => setStatus({ appName: 'GravityAnime', version: '0.1.0', engineConnected: false, platform: 'browser', message: 'Preview mode: run the app through Tauri to connect the Rust backend.' }));
     invoke<Settings>('get_settings').then(s => { setSettings(s); setDub(s.defaultDub); setQuality(s.defaultQuality); }).catch(() => undefined);
     refreshPlayers();
     refreshHistory();

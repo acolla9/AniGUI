@@ -1,12 +1,12 @@
 [package]
-name = "anicli-gui"
+name = "gravity-anime"
 version = "0.1.0"
-description = "A Windows-friendly desktop GUI for ani-cli"
-authors = ["AniCLI GUI contributors"]
+description = "A modern Windows desktop anime streaming app"
+authors = ["GravityAnime contributors"]
 edition = "2021"
 
 [lib]
-name = "anicli_gui_lib"
+name = "gravity_anime_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

@@ -1,4 +1,4 @@
-# AniCLI GUI (Windows-first starter)
+# GravityAnime (Windows-first starter)
 
 A Tauri 2 + React + TypeScript desktop shell for a Windows-friendly GUI inspired by `ani-cli`.
 

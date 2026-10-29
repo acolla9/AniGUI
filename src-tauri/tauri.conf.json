@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AniCLI",
+  "productName": "GravityAnime",
   "version": "0.1.0",
-  "identifier": "dev.anicli.gui",
+  "identifier": "com.gravityanime.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "AniCLI",
+        "title": "GravityAnime",
         "width": 1280,
         "height": 820,
         "minWidth": 900,
@@ -27,7 +27,7 @@
     "active": true,
     "targets": ["nsis"],
     "shortDescription": "Anime browsing and playback desktop app",
-    "longDescription": "A Windows desktop GUI for an ani-cli-inspired anime workflow.",
+    "longDescription": "A modern desktop GUI for streaming anime.",
     "category": "Entertainment",
     "windows": { "nsis": { "displayLanguageSelector": false, "installMode": "currentUser" } }
   }

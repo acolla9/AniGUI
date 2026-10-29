@@ -1,5 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    anicli_gui_lib::run();
+    gravity_anime_lib::run();
 }

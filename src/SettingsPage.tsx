@@ -54,7 +54,7 @@ export function SettingsPage({ settings, players, historyCount, onSave, onClearH
       if (res.hasUpdate) {
         setUpdateStatus(`Update available: v${res.latestVersion}`);
       } else {
-        setUpdateStatus(`AniGUI is up to date (v${res.currentVersion})`);
+        setUpdateStatus(`GravityAnime is up to date (v${res.currentVersion})`);
       }
     } catch (e) {
       setUpdateStatus(typeof e === 'string' ? e : 'Could not check for updates');
@@ -90,7 +90,7 @@ export function SettingsPage({ settings, players, historyCount, onSave, onClearH
               <Tv size={18} className="card-icon" />
               <div>
                 <h2 className="card-box-title">Media Player</h2>
-                <p className="card-box-sub">Choose which player AniGUI uses for streaming.</p>
+                <p className="card-box-sub">Choose which player GravityAnime uses for streaming.</p>
               </div>
             </div>
           </div>
@@ -254,7 +254,7 @@ export function SettingsPage({ settings, players, historyCount, onSave, onClearH
             <div className="panic-key-row">
               <div className="row-text">
                 <strong>Assigned Trigger Key</strong>
-                <small>Press this key anywhere while AniGUI is focused to instantly terminate everything.</small>
+                <small>Press this key anywhere while GravityAnime is focused to instantly terminate everything.</small>
               </div>
 
               <div className="panic-key-actions">
@@ -410,7 +410,7 @@ export function SettingsPage({ settings, players, historyCount, onSave, onClearH
               <Sparkles size={18} className="card-icon" />
               <div>
                 <h2 className="card-box-title">Application Info</h2>
-                <p className="card-box-sub">AniGUI client and backend version details.</p>
+                <p className="card-box-sub">GravityAnime client and backend version details.</p>
               </div>
             </div>
           </div>

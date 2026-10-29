@@ -2,6 +2,7 @@
   "current_version": {
     "version": "0.2.0",
     "release_date": "2026-10-29",
+<<<<<<< Updated upstream
     "notes": "Release v0.2.0",
     "download_url": "https://github.com/acolla9/GravityAnime/releases/download/v0.2.0/AniCLI_0.1.0_x64-setup.exe",
     "installer_url": "https://github.com/acolla9/GravityAnime/releases/download/v0.2.0/AniCLI_0.1.0_x64-setup.exe"
@@ -22,3 +23,11 @@
     }
   ]
 }
+=======
+    "notes": "Initial release with modernized streaming UI, mpv/VLC integration, and global panic key.",
+    "download_url": "https://github.com/AidenColla/AniGUI/releases/latest/download/GravityAnime-Setup.exe",
+    "installer_url": "https://github.com/AidenColla/AniGUI/releases/latest/download/GravityAnime-Setup.exe"
+  },
+  "all_previous_versions": []
+}
+>>>>>>> Stashed changes

@@ -95,7 +95,7 @@ struct SearchResponse {
 #[tauri::command]
 fn get_app_status() -> AppStatus {
     AppStatus {
-        app_name: "AniGUI",
+        app_name: "GravityAnime",
         version: env!("CARGO_PKG_VERSION"),
         // The native engine is now wired in. Provider requests can still fail
         // when the site changes, blocks requests, or the network is unavailable.
@@ -501,7 +501,7 @@ async fn check_for_updates(app: tauri::AppHandle) -> Result<UpdateCheckResult, S
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(8))
-        .user_agent("AniGUI-Updater/1.0")
+        .user_agent("GravityAnime-Updater/1.0")
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -547,7 +547,7 @@ async fn install_update(download_url: String) -> Result<String, String> {
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
-        .user_agent("AniGUI-Updater/1.0")
+        .user_agent("GravityAnime-Updater/1.0")
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -567,7 +567,7 @@ async fn install_update(download_url: String) -> Result<String, String> {
         .map_err(|e| format!("Failed to read update stream: {e}"))?;
 
     let temp_dir = std::env::temp_dir();
-    let installer_path = temp_dir.join("AniGUI_Update_Installer.exe");
+    let installer_path = temp_dir.join("GravityAnime_Update_Installer.exe");
 
     std::fs::write(&installer_path, &bytes)
         .map_err(|e| format!("Could not save installer to temp folder: {e}"))?;
@@ -636,5 +636,5 @@ pub fn run() {
             play_episode
         ])
         .run(tauri::generate_context!())
-        .expect("error while running AniGUI");
+        .expect("error while running GravityAnime");
 }

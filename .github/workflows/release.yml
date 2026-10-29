@@ -37,17 +37,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Locate NSIS Setup Executable
-        id: find-installer
+      - name: Prepare and Rename Setup Executable
+        id: prepare-installer
         shell: pwsh
         run: |
           $installer = Get-ChildItem -Path "src-tauri\target\release\bundle\nsis\*.exe" | Select-Object -First 1
           if (-not $installer) {
             throw "NSIS installer was not found in release bundle."
           }
-          Write-Host "Found installer: $($installer.FullName)"
-          echo "INSTALLER_PATH=$($installer.FullName)" >> $env:GITHUB_ENV
-          echo "INSTALLER_NAME=$($installer.Name)" >> $env:GITHUB_ENV
+          $targetPath = Join-Path $installer.DirectoryName "GravityAnime-Setup.exe"
+          Copy-Item -Path $installer.FullName -Destination $targetPath -Force
+          Write-Host "Created target installer: $targetPath"
+          echo "INSTALLER_PATH=$targetPath" >> $env:GITHUB_ENV
+          echo "INSTALLER_NAME=GravityAnime-Setup.exe" >> $env:GITHUB_ENV
 
       - name: Create GitHub Release
         id: create_release
@@ -103,4 +105,3 @@ jobs:
           git add $jsonPath
           git commit -m "chore(release): auto-update update-info.json for $env:TAG_NAME [skip ci]"
           git push origin main
-

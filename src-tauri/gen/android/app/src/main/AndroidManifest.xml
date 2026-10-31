@@ -33,5 +33,17 @@
             android:name="android.support.FILE_PROVIDER_PATHS"
             android:resource="@xml/file_paths" />
         </provider>
+            <activity
+            android:name=".PlayerActivity"
+            android:exported="false"
+            android:resizeableActivity="true"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density">
+            <layout
+                android:defaultWidth="1280dp"
+                android:defaultHeight="720dp"
+                android:minWidth="480dp"
+                android:minHeight="270dp" />
+        </activity>
     </application>
 </manifest>

@@ -3,9 +3,12 @@ mod persist;
 mod player;
 mod store;
 
+#[cfg(target_os = "android")]
+mod android_player;
+
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 static ACTIVE_PLAYER_PID: AtomicU32 = AtomicU32::new(0);
 static PANIC_VK_CODE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x7B); // VK_F12 = 0x7B
 
@@ -67,7 +70,6 @@ fn start_global_panic_listener(app_handle: tauri::AppHandle) {
     });
 }
 
-
 use player::PlayerKind;
 use serde::Serialize;
 use store::{HistoryEntry, PlayerChoice, Settings};
@@ -104,6 +106,8 @@ fn get_app_status() -> AppStatus {
             "windows"
         } else if cfg!(target_os = "linux") {
             "linux"
+        } else if cfg!(target_os = "android") {
+            "android"
         } else {
             "other"
         },
@@ -229,6 +233,18 @@ struct PlayersInfo {
 
 #[tauri::command]
 fn detect_players(app: tauri::AppHandle) -> Result<PlayersInfo, String> {
+    #[cfg(target_os = "android")]
+    {
+        let settings = persist::load_settings(&data_dir(&app)?);
+        return Ok(PlayersInfo {
+            selected: settings.player,
+            mpv: None,
+            vlc: None,
+            selected_found: true,
+            message: "Using the built-in device player.".to_string(),
+        });
+    }
+
     let settings = persist::load_settings(&data_dir(&app)?);
     let find =
         |choice: PlayerChoice| player::find_player(kind_of(choice), settings.custom_path(choice));
@@ -296,9 +312,33 @@ struct PlaybackEnded {
     message: String,
 }
 
+#[cfg(target_os = "android")]
+#[tauri::command]
+async fn play_episode(
+    app: tauri::AppHandle,
+    anime_id: String,
+    anime_title: String,
+    anime_poster: Option<String>,
+    episode: ani_engine::Episode,
+    dub: bool,
+    quality: String,
+) -> Result<PlaybackStarted, String> {
+    android_player::play(
+        app,
+        anime_id,
+        anime_title,
+        anime_poster,
+        episode,
+        dub,
+        quality,
+    )
+    .await
+}
+
 /// Resolve the episode's stream, pick a quality and open it in the player chosen in
 /// Settings. Returns as soon as the player has started; a `playback-ended` event
 /// follows when the player closes.
+#[cfg(not(target_os = "android"))]
 #[tauri::command]
 async fn play_episode(
     app: tauri::AppHandle,
@@ -461,7 +501,6 @@ async fn play_episode(
     })
 }
 
-
 #[derive(serde::Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct VersionItem {
@@ -512,7 +551,10 @@ async fn check_for_updates(app: tauri::AppHandle) -> Result<UpdateCheckResult, S
         .map_err(|e| format!("Could not check for updates: {e}"))?;
 
     if !res.status().is_success() {
-        return Err(format!("Update server returned HTTP status {}", res.status()));
+        return Err(format!(
+            "Update server returned HTTP status {}",
+            res.status()
+        ));
     }
 
     let manifest: UpdateManifest = res
@@ -521,9 +563,15 @@ async fn check_for_updates(app: tauri::AppHandle) -> Result<UpdateCheckResult, S
         .map_err(|e| format!("Invalid update-info.json format: {e}"))?;
 
     let current = env!("CARGO_PKG_VERSION");
-    let current_semver = semver::Version::parse(current).unwrap_or_else(|_| semver::Version::new(0, 1, 0));
-    let latest_clean = manifest.current_version.version.trim().trim_start_matches('v');
-    let latest_semver = semver::Version::parse(latest_clean).unwrap_or_else(|_| semver::Version::new(0, 0, 0));
+    let current_semver =
+        semver::Version::parse(current).unwrap_or_else(|_| semver::Version::new(0, 1, 0));
+    let latest_clean = manifest
+        .current_version
+        .version
+        .trim()
+        .trim_start_matches('v');
+    let latest_semver =
+        semver::Version::parse(latest_clean).unwrap_or_else(|_| semver::Version::new(0, 0, 0));
 
     let has_update = latest_semver > current_semver;
 
@@ -558,7 +606,10 @@ async fn install_update(download_url: String) -> Result<String, String> {
         .map_err(|e| format!("Failed to download update installer: {e}"))?;
 
     if !response.status().is_success() {
-        return Err(format!("Download failed with status: {}", response.status()));
+        return Err(format!(
+            "Download failed with status: {}",
+            response.status()
+        ));
     }
 
     let bytes = response
@@ -574,9 +625,15 @@ async fn install_update(download_url: String) -> Result<String, String> {
 
     #[cfg(target_os = "windows")]
     {
-        let _ = std::process::Command::new(&installer_path).arg("/S").spawn().map_err(|e| {
-            format!("Could not execute installer {}: {e}", installer_path.display())
-        })?;
+        let _ = std::process::Command::new(&installer_path)
+            .arg("/S")
+            .spawn()
+            .map_err(|e| {
+                format!(
+                    "Could not execute installer {}: {e}",
+                    installer_path.display()
+                )
+            })?;
         std::process::exit(0);
     }
 
@@ -608,7 +665,10 @@ fn trigger_panic(app: tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(android_player::init());
+    builder
         .setup(|app| {
             if let Ok(dir) = data_dir(&app.handle().clone()) {
                 let settings = persist::load_settings(&dir);

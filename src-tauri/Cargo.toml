@@ -22,5 +22,7 @@ regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "charset", "json"] }
 scraper = "0.22"
 urlencoding = "2"
-windows-sys = { version = "0.61.2", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 semver = "1.0.28"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
